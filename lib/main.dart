@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'services/firestore_service.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
   runApp(const MyApp());
 }
 
@@ -21,7 +19,51 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Smart Cart',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const AuthGate(),
+      home: const AppInitializer(),
+    );
+  }
+}
+
+class AppInitializer extends StatefulWidget {
+  const AppInitializer({super.key});
+
+  @override
+  State<AppInitializer> createState() => _AppInitializerState();
+}
+
+class _AppInitializerState extends State<AppInitializer> {
+  late final Future<FirebaseApp> _initFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initFuture = Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<FirebaseApp>(
+      future: _initFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Error initializing Firebase: ${snapshot.error}'),
+              ),
+            ),
+          );
+        }
+        return const AuthGate();
+      },
     );
   }
 }
@@ -216,20 +258,109 @@ class HomePage extends StatelessWidget {
             const SizedBox(height: 16),
             const Text('This is the home page. Replace with your app UI.'),
             const SizedBox(height: 12),
+            // ElevatedButton(
+            //   onPressed: () async {
+            //     final uid = user?.uid ?? 'anonymous';
+            //     try {
+            //       await FirestoreService.instance.writeSampleUser(uid, {
+            //         'email': user?.email ?? '',
+            //         'name': 'Demo User',
+            //       });
+            //       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wrote sample user to Firestore')));
+            //     } catch (e) {
+            //       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error writing to Firestore: $e')));
+            //     }
+            //   },
+            //   child: const Text('Write sample user to Firestore'),
+            // ),
+            const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () async {
-                final uid = user?.uid ?? 'anonymous';
+                final uid = user?.uid;
+                if (uid == null) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No user is signed in')));
+                  return;
+                }
                 try {
-                  await FirestoreService.instance.writeSampleUser(uid, {
-                    'email': user?.email ?? '',
-                    'name': 'Demo User',
-                  });
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wrote sample user to Firestore')));
+                  final data = await FirestoreService.instance.getUser(uid);
+                  if (context.mounted) {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('User document (once)'),
+                        content: Text(data == null ? 'No document found' : data.toString()),
+                        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+                      ),
+                    );
+                  }
                 } catch (e) {
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error writing to Firestore: $e')));
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading user: $e')));
                 }
               },
-              child: const Text('Write sample user to Firestore'),
+              child: const Text('Read user document once'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () async {
+                // Append a timestamped message to an array field 'messages' in users/{uid}
+                final uid = user?.uid;
+                if (uid == null) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No user is signed in')));
+                  return;
+                }
+                try {
+                  final msg = {'text': 'Button pressed', 'at': DateTime.now().toIso8601String()};
+                  await FirestoreService.instance.appendToArrayField('users/$uid', 'messages', msg);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Appended message to user document')));
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error appending message: $e')));
+                }
+              },
+              child: const Text('Append message to user doc'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () async {
+                // Add a history doc under users/{uid}/history so previous entries are preserved
+                final uid = user?.uid;
+                if (uid == null) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No user is signed in')));
+                  return;
+                }
+                try {
+                  final entry = {'action': 'button_press', 'time': FieldValue.serverTimestamp()};
+                  await FirestoreService.instance.addSubcollectionDocument('users/$uid', 'history', entry);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added history entry')));
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding history entry: $e')));
+                }
+              },
+              child: const Text('Add history entry'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () {
+                final uid = user?.uid;
+                if (uid == null) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No user is signed in')));
+                  return;
+                }
+                showDialog(
+                  context: context,
+                  builder: (ctx) => StreamBuilder<Map<String, dynamic>?>(
+                    stream: FirestoreService.instance.streamUser(uid),
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) return const AlertDialog(content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())));
+                      return AlertDialog(
+                        title: const Text('Live user document'),
+                        content: Text(snap.data == null ? 'No document' : snap.data.toString()),
+                        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))],
+                      );
+                    },
+                  ),
+                );
+              },
+              child: const Text('Show live user updates'),
             ),
           ],
         ),

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_service.dart';
 import '../widgets/feature_card.dart';
 import 'profile_screen.dart';
+import 'product_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,7 +18,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = [
     const HomeTab(),
-    const CategoriesTab(),
+    const CategoriesTabUpdated(),
     const CartTab(),
     const ProfileScreen(),
   ];
@@ -333,14 +334,28 @@ class HomeTab extends StatelessWidget {
   }
 }
 
-class CategoriesTab extends StatelessWidget {
-  const CategoriesTab({super.key});
+class CategoriesTabUpdated extends StatelessWidget {
+  const CategoriesTabUpdated({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Categories'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.store),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProductsListScreen(),
+                ),
+              );
+            },
+            tooltip: 'View All Products',
+          ),
+        ],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -372,8 +387,14 @@ class CategoriesTab extends StatelessWidget {
             ),
             child: InkWell(
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${category['name']} category')),
+                // Navigate to products filtered by category
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProductsListScreen(
+                      category: category['name'] as String,
+                    ),
+                  ),
                 );
               },
               borderRadius: BorderRadius.circular(16),
